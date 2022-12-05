@@ -25,7 +25,8 @@ void initialize() {
 	)";
 }
 
+
+
 int main() {
 	initialize();
-	
 }
