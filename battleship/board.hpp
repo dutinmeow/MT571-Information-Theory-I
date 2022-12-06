@@ -49,12 +49,12 @@ public:
 	}
 };
 
-std::string to_string(const unknownBoard &board, bool display_unknown = false) {
+std::string to_string(const KnownBoard &board, bool display_water = false) {
 	std::string ret = "  1234567890\n +----------\n";
 	for (int i = 0; i < BOARD_SIZE; i++) {
 		ret += std::string(1, 'a' + i) + '|';
 		for (int j = 0; j < BOARD_SIZE; j++) {
-			if (board[i][j] == 'e' && !display_unknown)
+			if (board[i][j] == 'e' && !display_water)
 				ret += ' ';
 			else 
 				ret += board[i][j];
@@ -81,7 +81,7 @@ public:
 	}
 };
 
-std::string to_string(const unknownBoard &board, bool display_unknown = false) {
+std::string to_string(const UnknownBoard &board, bool display_unknown = false) {
 	const static std::string RED = "\033[31m";
 	const static std::string GREEN = "\033[32m";
 	const static std::string BLUE = "\033[34m";
