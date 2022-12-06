@@ -1,7 +1,11 @@
 #include <iostream>
+#include <iomanip>
 
 void initialize() {
-	std::cout << R"(                                     |__
+     std::cout << std::fixed << std::setprecision(9);
+
+	std::cout << R"(
+                                     |__
                                      |\/
                                      ---
                                      / | [
@@ -29,4 +33,5 @@ void initialize() {
 
 int main() {
 	initialize();
+
 }
