@@ -13,7 +13,7 @@ public:
 			row.fill('e');
 	}
 
-	void checkEmpty(int row1, int col1, int row2, int col2) {
+	bool checkEmpty(int row1, int col1, int row2, int col2) {
 		if (row1 == row2) {
 			for (int col = col1; col <= col2; col++)
 				if (board[row1][col] == 's')
@@ -47,22 +47,22 @@ public:
 				board[row][col1] = 'e';
 		}	
 	}
-};
 
-std::string to_string(const KnownBoard &board, bool display_water = false) {
-	std::string ret = "  1234567890\n +----------\n";
-	for (int i = 0; i < BOARD_SIZE; i++) {
-		ret += std::string(1, 'a' + i) + '|';
-		for (int j = 0; j < BOARD_SIZE; j++) {
-			if (board[i][j] == 'e' && !display_water)
-				ret += ' ';
-			else 
-				ret += board[i][j];
+	friend std::string to_string(const KnownBoard &board, bool display_water = false) {
+		std::string ret = "  1234567890\n +----------\n";
+		for (int i = 0; i < BOARD_SIZE; i++) {
+			ret += std::string(1, 'a' + i) + '|';
+			for (int j = 0; j < BOARD_SIZE; j++) {
+				if (board.board[i][j] == 'e' && !display_water)
+					ret += ' ';
+				else 
+					ret += board.board[i][j];
+			}
+			ret += '\n';
 		}
-		ret += '\n';
+		return ret;
 	}
-	return ret;
-}
+};
 
 class UnknownBoard {
 	std::array<std::array<char, BOARD_SIZE>, BOARD_SIZE> board;
