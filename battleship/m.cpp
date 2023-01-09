@@ -3,7 +3,8 @@
 #include <local/debug>
 
 const short N = 10;
-const int M = 1'000'000, P = 6;
+const int M = 1'000'000, P = 6, K = 6;
+const double H = 0.95, THR = 0.75, EPS = 1e-9;
 
 short compressState(short x, short y, short dir) { return x * N + y + dir * N * N; }
 
@@ -39,13 +40,12 @@ void displayGradient(const std::array<std::array<float, N>, N> &arr) {
 	const static int num = 5;
 	const static std::array<std::string, 5> grad = {"🖕🏿", "🖕🏾", "🖕🏽", "🖕🏼", "🖕🏻"};
 	// const static std::array<std::string, 8> grad = {"🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "🟫", "⬛️"};
-	const static float EPS = 1e-5;
 	const std::string HIT = "✅", MISS = "❌";
 
 	float amx = 0.0, amn = 1.0;
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
-			if (arr[i][j] > 1.0)
+			if (arr[i][j] >= 2.0)
 				continue;
 			amx = std::max(amx, arr[i][j]);
 			amn = std::min(amn, arr[i][j]);
@@ -69,6 +69,9 @@ void displayGradient(const std::array<std::array<float, N>, N> &arr) {
 				ind++;
 			if (ind == num)
 				ind--;
+			if (ind < 0 || ind > num) {
+				std::cerr << arr[i][j] << ' ' << amn << ' ' << amx << ' ' << ind << '\n';
+			}
 			std::cerr << grad[ind];
 		}
 		std::cerr << '\n';
@@ -84,6 +87,16 @@ int main() {
 		r.fill('U');
 	int moves = 0;
 	short numHits = 0;
+
+	std::string mode;
+	std::cout << "Enable automatic tester?\n";
+	std::cin >> mode;
+	bool automatic = (mode == "YES");
+
+	if (automatic) {
+		
+	}
+
 	for (; numHits < 17; moves++) {
 		std::cerr << "loading ship positions...\n";
 		std::vector<std::vector<short>> shipPositions(numShips);
@@ -126,7 +139,7 @@ int main() {
 			}
 		}
 
-		std::cerr << "generating configurations...\n";
+		std::cerr << "generating configurations... (with examples)\n";
 		int validConfigs = 0;
 		std::array<std::array<short, N>, N> curFreq;
 		std::array<std::array<int, N>, N> freqHit;
@@ -181,7 +194,8 @@ int main() {
 						freqHit[x][y]++;
 			validConfigs++;
 
-			if (local::rng::rint(0, M - 1) == 0) {
+			if (validConfigs < K) {
+
 				std::cerr << "  0123456789\n +----------\n";
 				for (int x = 0; x < N; x++) {
 					std::cerr << x << '|';
@@ -190,6 +204,7 @@ int main() {
 					}
 					std::cerr << '\n';
 				}
+				std::cerr << '\n';
 			}
 		}
 
@@ -207,7 +222,13 @@ int main() {
 				}
 				double hit = (double)freqHit[x][y] / validConfigs;
 				double miss = 1.0 - hit;
-				entropy[x][y] = hit * log2(1.0 / hit) + miss * log2(1.0 / miss);
+				if (hit > THR) {
+					maxEntropy = 1.0;
+					shotX = x, shotY = y;
+					break;
+				}
+				entropy[x][y] = (hit < EPS || miss > 1.0 - EPS ? 0.0 : hit * log2(1.0 / hit) * H) + 
+					(miss < EPS || miss > 1.0 - EPS ? 0.0 : miss * log2(1.0 / miss) * (1.0 - H));
 				if (entropy[x][y] > maxEntropy) {
 					maxEntropy = entropy[x][y];
 					shotX = x, shotY = y;
@@ -229,7 +250,7 @@ int main() {
 		std::string verdict;
 		while (true) {
 			std::cin >> verdict;
-			if (verdict == "STOP") {
+			if (verdict == "STOP" || verdict == "BREAK" || verdict == "RETURN") {
 				return 0;
 			} else if (verdict != "HIT" && verdict != "MISS" && verdict != "SUNK") {
 				std::cout << "Invalid response, enter again: ";
