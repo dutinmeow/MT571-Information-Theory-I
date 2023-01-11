@@ -36,7 +36,7 @@ const int DBG_BOARD_NUM = 0;      // number of example boards to display
 
 const short PARITY_OFFSET = 0.1;  // heuristic to boost probability of odd squares
 const float HIT_BOOSTER = 0.95;   // heuristic to boost probability of hits
-const float HIT_THESHOLD = 0.75;  // heuristic to shoot when hit probabilty exceeds value
+const float HIT_THESHOLD = 300.0; // heuristic to shoot when hit probabilty exceeds value
 
 const double EPS = 1e-9;
 
@@ -164,7 +164,7 @@ void displayGraphicGradient(const std::array<std::array<char, N>, N> &arr, std::
 }
 
 int main() {
-	std::cerr << std::fixed << std::setprecision(6);
+	std::cerr << std::fixed << std::setprecision(6) << std::boolalpha;
 
 	int numShips = 5;                              // number of ships
 	std::vector<short> shipSizes{2, 3, 3, 4, 5};   // sizes of active ships
@@ -348,7 +348,7 @@ int main() {
 				continue;
 			for (int x = 0; x < N; x++) {
 				for (int y = 0; y < N; y++) {
-					if (board[x][y] == HIT_CHAR && curFreq[x][y] == 0) {
+					if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && curFreq[x][y] == 0) {
 						invalid = true;
 						break;
 					}
@@ -403,8 +403,8 @@ int main() {
 						maxEntropy = 1.0;
 						shotX = x, shotY = y;
 					} else {
-						entropy[x][y] = (hit < EPS || miss > 1.0 - EPS ? 0.0 : hit * log2(1.0 / hit) * HIT_BOOSTER) + 
-							(miss < EPS || miss > 1.0 - EPS ? 0.0 : miss * log2(1.0 / miss) * (1.0 - HIT_BOOSTER));
+						// entropy[x][y] = (hit < EPS || miss > 1.0 - EPS ? 0.0 : hit * log2(1.0 / hit) * HIT_BOOSTER) + (miss < EPS || miss > 1.0 - EPS ? 0.0 : miss * log2(1.0 / miss) * (1.0 - HIT_BOOSTER));
+						entropy[x][y] = hit;
 						if ((x + y) % 2 == 0)
 							entropy[x][y] += PARITY_OFFSET;
 						if (entropy[x][y] > maxEntropy) {
@@ -421,9 +421,17 @@ int main() {
 		displayGraphicGradient(entropy, "Entropy Heat Map");
 
 		std::cerr << PURPLE << "We've hit " << numHits << " out of " << totalNumHits << " spots so far\n";
-		std::cerr << "Currently at Step " << moves << '\n' << RESET;
+		std::cerr << "Currently at Step " << moves << '\n';
+		std::cerr << "Current state of shipSizes array: [";
+			for (short i = 0; i < numShips; i++) {
+				std::cerr << shipSizes[i];
+				if (i < numShips - 1)
+					std::cerr << ", ";
+				else
+					std::cerr << "]\n";
+			}
 
-		std::cerr << GREEN << BOLD << "\n\n\n\n\n\nMove " << moves + 1 << ": Guess at (" << shotX << ", " << shotY << ")\n" << RESET;
+		std::cerr << GREEN << "\n\n\n\n\n\nMove " << moves + 1 << ": Guess at (" << shotX << ", " << shotY << ")\n" << RESET;
 
 		std::cout << "Response: ";
 		std::string verdict;
@@ -478,7 +486,7 @@ int main() {
 
 			std::cerr << YELLOW << "--> Step 0.1: Generate ship positions\n" << RESET;
 
-			std::vector<std::vector<short>> shipPositions(numShips);
+			std::vector<std::vector<short>> insideShipPositions(numShips), outsideShipPositions(numShips);
 			for (short i = 0; i < numShips; i++) {
 				short len = shipSizes[i];
 				for (short x = 0; x < N; x++) {
@@ -497,14 +505,16 @@ int main() {
 									seenHit = true;
 							}
 							if (seenHit && numSunk <= 1 && !seenMiss && !(numSunk == 1 && seenUnknown)) 
-								shipPositions[i].push_back(compressState(x, y, 0));
+								insideShipPositions[i].push_back(compressState(x, y, 0));
+							else if (!seenHit && !seenMiss && numSunk == 0)
+								outsideShipPositions[i].push_back(compressState(x, y, 0));
 						}
 						if (y + len - 1 < N) {
 							short numSunk = 0;
 							bool seenUnknown = false, seenMiss = false, seenHit = false;
 							for (int yy = y; yy < y + len; yy++) {
 								if (board[x][yy] == SUNK_CHAR)
-									seenSunk++;
+									numSunk++;
 								else if (board[x][yy] == UNKNOWN_CHAR)
 									seenUnknown = true;
 								else if (board[x][yy] == MISS_CHAR || board[x][yy] == KILL_CHAR)
@@ -513,32 +523,248 @@ int main() {
 									seenHit = true;
 							}
 							if (seenHit && numSunk <= 1 && !seenMiss && !(numSunk == 1 && seenUnknown)) 
-								shipPositions[i].push_back(compressState(x, y, 1));
+								insideShipPositions[i].push_back(compressState(x, y, 1));
+							else if (!seenHit && !seenMiss && numSunk == 0)
+								outsideShipPositions[i].push_back(compressState(x, y, 1));
 						}
 					}
 				}
 			}
 
-			std::cerr << YELLOW << "--> Step 0.2: Generate ship masks\n" << RESET;
+			std::cerr << YELLOW << "--> Step 0.2: Try to fit all subsets outside hit positions\n" << RESET;
 
-			std::array<std::array<short, N>, N> visBoard; 
-			std::array<std::array<short, N>, N> mask;
-			for (int i = 0; i < N; i++) {
-				for (int j = 0; j < N; j++) {
-					visBoard[i][j] = UNKNOWN_INT;
-					mask[i][j] = 0;
-				}
-			}
+			short numSubsets = (1 << numShips);
+			std::vector<bool> canFit(numSubsets, false);
+			std::array<std::array<bool, N>, N> visBoard;
 
-			std::y_combinator([&](auto self, int i) -> void {
+			for (short i = 0; i < N; i++) 
+				for (short j = 0; j < N; j++)
+					visBoard[i][j] = false;
+			for (short i = 0; i < numShips; i++)
+				std::shuffle(outsideShipPositions[i].begin(), outsideShipPositions[i].end(), local::rng::mst);
+
+			auto dfs1 = std::y_combinator([&](auto self, short i, short m) -> void {
+				if (canFit[m])
+					return;
 				if (i == numShips) {
+					canFit[m] = true;
 					return;
 				}
 
 				short len = shipSizes[i];
-				self(i + 1);
-			})(0);
+				if (m >> i & 1) {
+					for (short t : outsideShipPositions[i]) {
+						auto [x, y, d] = uncompressState(t);
+						bool invalid = false;
+						if (d == 0) {
+							for (short xx = x; xx < x + len; xx++) {
+								if (visBoard[xx][y]) {
+									invalid = true;
+									break;
+								}
+							}
+							if (invalid)
+								continue;
+							for (short xx = x; xx < x + len; xx++)
+								visBoard[xx][y] = true;
+							self(i + 1, m);
+							for (short xx = x; xx < x + len; xx++)
+								visBoard[xx][y] = false;
+						} else {
+							for (short yy = y; yy < y + len; yy++) {
+								if (visBoard[x][yy]) {
+									invalid = true;
+									break;
+								}
+							}
+							if (invalid)
+								continue;
+							for (short yy = y; yy < y + len; yy++)
+								visBoard[x][yy] = true;
+							self(i + 1, m);
+							for (short yy = y; yy < y + len; yy++)
+								visBoard[x][yy] = false;
+						}
+						if (canFit[m])
+							return;
+					}
+				} else {
+					self(i + 1, m);
+				}
+			});
+
+			for (short m = 0; m < numSubsets; m++) 
+				dfs1(0, m);
+
+			std::cerr << PURPLE << "    Final state of canFit array: [";
+			for (short i = 0; i < numSubsets; i++) {
+				std::cerr << canFit[i];
+				if (i < numSubsets - 1)
+					std::cerr << ", ";
+				else
+					std::cerr << "]\n" << RESET;
+			}
+
+			std::cerr << YELLOW << "--> Step 0.3: Generate ship masks\n" << RESET;
+
+			std::array<std::array<short, N>, N> curBoard;
+			std::array<std::array<short, N>, N> maskBoard;
+
+			for (short i = 0; i < N; i++) {
+				for (short j = 0; j < N; j++) {
+					curBoard[i][j] = UNKNOWN_INT;
+					maskBoard[i][j] = 0;
+				}
+			}
+
+			auto dfs2 = std::y_combinator([&](auto self, short i, short m) -> void {
+				if (i == numShips) {
+					for (short x = 0; x < N; x++) 
+						for (short y = 0; y < N; y++) 
+							if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && curBoard[x][y] == UNKNOWN_INT) 
+								return;
+					for (short x = 0; x < N; x++)
+						for (short y = 0; y < N; y++)
+							if (curBoard[x][y] != UNKNOWN_INT)
+								maskBoard[x][y] |= (1 << curBoard[x][y]);
+					return;
+				}
+
+				short len = shipSizes[i];
+				if (m >> i & 1) {
+					for (short t : insideShipPositions[i]) {
+						auto [x, y, d] = uncompressState(t);
+						bool invalid = false;
+						if (d == 0) {
+							for (short xx = x; xx < x + len; xx++) {
+								if (curBoard[xx][y] != UNKNOWN_INT) {
+									invalid = true;
+									break;
+								}
+							}
+							if (invalid)
+								continue;
+							for (short xx = x; xx < x + len; xx++)
+								curBoard[xx][y] = i;
+							self(i + 1, m);
+							for (short xx = x; xx < x + len; xx++)
+								curBoard[xx][y] = UNKNOWN_INT;
+						} else {
+							for (short yy = y; yy < y + len; yy++) {
+								if (curBoard[x][yy] != UNKNOWN_INT) {
+									invalid = true;
+									break;
+								}
+							}
+							if (invalid)
+								continue;
+							for (short yy = y; yy < y + len; yy++)
+								curBoard[x][yy] = i;
+							self(i + 1, m);
+							for (short yy = y; yy < y + len; yy++)
+								curBoard[x][yy] = UNKNOWN_INT;
+						}
+					}
+				} else {
+					self(i + 1, m);
+				}
+			});
+
+			for (short m = 1; m < numSubsets; m++) {
+				if (!canFit[(numSubsets - 1) ^ m])
+					continue;
+				dfs2(0, m);
+			}
+
+			std::cerr << "\n    Final state of maskBoard matrix:\n";
+			for (short x = 0; x < N; x++) {
+				std::cerr << "    [";
+				for (short y = 0; y < N; y++) {
+					for (short b = 0; b < numShips; b++)
+						std::cerr << (maskBoard[x][y] >> b & 1);
+					if (y < N - 1)
+						std::cerr << ' ';
+				}
+				std::cerr << "]\n";
+			}
+			std::cerr << RESET << '\n';
+
+			std::cerr << YELLOW << "--> Step 0.4: Removing confirmed sunk ships\n" << RESET;
+
+			for (short i = 0; i < numShips; i++) {
+				if (shipSizes[i] == 3) {
+					int otherThreeInd = -1;
+					for (int j = i + 1; j < numShips; j++)
+						if (shipSizes[j] == 3)
+							otherThreeInd = j;
+					if (otherThreeInd == -1) {
+						short numSquares = 0;
+						for (short x = 0; x < N; x++)
+							for (short y = 0; y < N; y++)
+								if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+									numSquares++;
+						if (numSquares == 3) {
+							for (short x = 0; x < N; x++)
+								for (short y = 0; y < N; y++)
+									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+										board[x][y] = KILL_CHAR;
+							shipSizes.erase(shipSizes.begin() + i);
+							numShips--, i--;
+						}
+					} else {
+						short numSquares = 0;
+						for (short x = 0; x < N; x++)
+							for (short y = 0; y < N; y++)
+								if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 2)
+									numSquares++;
+						if (numSquares == 3) {
+							for (short x = 0; x < N; x++)
+								for (short y = 0; y < N; y++)
+									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+										board[x][y] = KILL_CHAR;
+							shipSizes.erase(shipSizes.begin() + i);
+							numShips--, i--;
+						} else if (numSquares == 6) {
+							for (short x = 0; x < N; x++)
+								for (short y = 0; y < N; y++)
+									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+										board[x][y] = KILL_CHAR;
+							shipSizes.erase(shipSizes.begin() + i);
+							shipSizes.erase(shipSizes.begin() + i);
+							numShips -= 2, i--;
+						}
+					}
+				} else {
+					short numSquares = 0;
+					for (short x = 0; x < N; x++)
+						for (short y = 0; y < N; y++)
+							if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+								numSquares++;
+					if (numSquares == shipSizes[i]) {
+						for (short x = 0; x < N; x++)
+							for (short y = 0; y < N; y++)
+								if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+									board[x][y] = KILL_CHAR;
+						shipSizes.erase(shipSizes.begin() + i);
+						numShips--, i--;
+					}
+				}
+			}
+
+			assert(numShips == (short)shipSizes.size());
+
+			std::cerr << PURPLE << "    Final state of shipSizes array: [";
+			for (short i = 0; i < numShips; i++) {
+				std::cerr << shipSizes[i];
+				if (i < numShips - 1)
+					std::cerr << ", ";
+				else
+					std::cerr << "]\n";
+			}
 		}
+
+		std::cerr << '\n';
+		displayGraphicGradient(board, "Board After Query");
 	}
 
 	std::cout << BOLD << CYAN << "\n\nNumber of Total Moves is " << moves << RESET << "\n\n";
