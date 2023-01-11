@@ -2,9 +2,10 @@
 #include <local/random>
 #include <local/debug>
 
-const short N = 10;
-const int M = 1'000'000, P = 6, K = 6;
+const short N = 10, ODB = 0.1;
+const int M = 1'000'000, B = 50, P = 6, K = 3;
 const double H = 0.95, THR = 0.75, EPS = 1e-9;
+const std::string HIT = "✅", MISS = "❌";
 
 short compressState(short x, short y, short dir) { return x * N + y + dir * N * N; }
 
@@ -39,8 +40,8 @@ void displayBoard(const std::array<std::array<float, N>, N> &arr) {
 void displayGradient(const std::array<std::array<float, N>, N> &arr) {
 	const static int num = 5;
 	const static std::array<std::string, 5> grad = {"🖕🏿", "🖕🏾", "🖕🏽", "🖕🏼", "🖕🏻"};
+	const static std::string opt = "🖕";
 	// const static std::array<std::string, 8> grad = {"🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "🟫", "⬛️"};
-	const std::string HIT = "✅", MISS = "❌";
 
 	float amx = 0.0, amn = 1.0;
 	for (int i = 0; i < N; i++) {
@@ -64,14 +65,19 @@ void displayGradient(const std::array<std::array<float, N>, N> &arr) {
 				std::cerr << HIT;
 				continue;
 			}
+
+			if (arr[i][j] == amx) {
+				std::cerr << opt;
+				continue;
+			}
 			int ind = (arr[i][j] - amn + EPS) / sep;
 			if (ind == -1)
 				ind++;
 			if (ind == num)
 				ind--;
-			if (ind < 0 || ind > num) {
-				std::cerr << arr[i][j] << ' ' << amn << ' ' << amx << ' ' << ind << '\n';
-			}
+			// if (ind < 0 || ind > num) {
+			// 	std::cerr << arr[i][j] << ' ' << amn << ' ' << amx << ' ' << ind << '\n';
+			// }
 			std::cerr << grad[ind];
 		}
 		std::cerr << '\n';
@@ -86,18 +92,87 @@ int main() {
 	for (auto &r : board)
 		r.fill('U');
 	int moves = 0;
-	short numHits = 0;
+	short numHits = 0, total = std::accumulate(shipSizes.begin(), shipSizes.end(), 0);
 
 	std::string mode;
 	std::cout << "Enable automatic tester?\n";
 	std::cin >> mode;
-	bool automatic = (mode == "YES");
 
+	bool automatic = (mode == "YES");
+	std::array<std::array<short, N>, N> god;
 	if (automatic) {
-		
+		for (auto &r : god)
+			r.fill(-1);
+		for (int i = 0; i < numShips; i++) {
+			short len = shipSizes[i];
+			while (true) {
+				int x = local::rng::rint(0, N - 1);
+				int y = local::rng::rint(0, N - 1);
+				int d = local::rng::rint(0, 1);
+				if (d == 0) {
+					if (x + len - 1 < N) {
+						bool another = false;
+						for (int xx = x; xx < x + len; xx++) {
+							if (god[xx][y] != -1) {
+								another = true;
+								break;
+							}
+						}
+						if (another)
+							continue;
+						for (int xx = x; xx < x + len; xx++)
+							god[xx][y] = i;
+						break;
+					}
+				} else {
+					if (y + len - 1 < N) {
+						bool another = false;
+						for (int yy = y; yy < y + len; yy++) {
+							if (god[x][yy] != -1) {
+								another = true;
+								break;
+							}
+						}
+						if (another)
+							continue;
+						for (int yy = y; yy < y + len; yy++)
+							god[x][yy] = i;
+						break;
+					}
+				}
+			}
+		}
+
+		std::cerr << BOLD << "Automatic Mode Enabled\nRandomly Generated Board Configuration:\n" << RESET;
+		std::cout << "  0123456789\n +----------\n";
+		for (int x = 0; x < N; x++) {
+			std::cerr << x << "|";
+			for (int y = 0; y < N; y++) {
+				if (god[x][y] == -1)
+					std::cerr << ' ';
+				else
+					std::cerr << god[x][y];
+			}
+			std::cerr << '\n';
+		}
+		std::cerr << '\n';
+
+		std::string valid;
+		std::cout << "Confirm that the generated board is valid: ";
+		while (true) {
+			std::cin >> valid;
+			if (valid == "NO") {
+				return 0;
+			} else if (valid == "YES") {
+				break;
+			} else {
+				std::cout << "Invalid answer, please enter again: ";
+			}
+		}
+
 	}
 
-	for (; numHits < 17; moves++) {
+	for (; numHits < total; moves++) {
 		std::cerr << "loading ship positions...\n";
 		std::vector<std::vector<short>> shipPositions(numShips);
 		for (short i = 0; i < numShips; i++) {
@@ -146,7 +221,7 @@ int main() {
 		for (short x = 0; x < N; x++)
 			for (short y = 0; y < N; y++)
 				freqHit[x][y] = 0;
-		for (int itr = 0; itr < M; itr++) {
+		for (int itr = 0; itr < M || validConfigs < B; itr++) {
 			for (int x = 0; x < N; x++)
 				for (int y = 0; y < N; y++)
 					curFreq[x][y] = 0;
@@ -195,7 +270,6 @@ int main() {
 			validConfigs++;
 
 			if (validConfigs < K) {
-
 				std::cerr << "  0123456789\n +----------\n";
 				for (int x = 0; x < N; x++) {
 					std::cerr << x << '|';
@@ -217,7 +291,7 @@ int main() {
 		for (int x = 0; x < N; x++) {
 			for (int y = 0; y < N; y++) {
 				if (board[x][y] != 'U') {
-					entropy[x][y] = (board[x][y] == 'H' ? 3.0 : 2.0);
+					entropy[x][y] = (board[x][y] == 'M' ? 2.0 : 3.0);
 					continue;
 				}
 				double hit = (double)freqHit[x][y] / validConfigs;
@@ -229,6 +303,8 @@ int main() {
 				}
 				entropy[x][y] = (hit < EPS || miss > 1.0 - EPS ? 0.0 : hit * log2(1.0 / hit) * H) + 
 					(miss < EPS || miss > 1.0 - EPS ? 0.0 : miss * log2(1.0 / miss) * (1.0 - H));
+				if ((x + y) % 2 == 0)
+					entropy[x][y] += ODB;
 				if (entropy[x][y] > maxEntropy) {
 					maxEntropy = entropy[x][y];
 					shotX = x, shotY = y;
@@ -244,47 +320,91 @@ int main() {
 		std::cerr << "\n###    Entropy Heat Map       ###\n";
 		displayGradient(entropy);
 
-		std::cerr << GREEN << BOLD << "Guess at (" << shotX << ", " << shotY << ")\n" << RESET;
+		std::cerr << "We've hit " << numHits << " / 17 ships so far\n";
+
+		std::cerr << GREEN << BOLD << "\n\n\nGuess at (" << shotX << ", " << shotY << ")\n" << RESET;
 
 		std::cout << "Response: ";
 		std::string verdict;
-		while (true) {
-			std::cin >> verdict;
-			if (verdict == "STOP" || verdict == "BREAK" || verdict == "RETURN") {
-				return 0;
-			} else if (verdict != "HIT" && verdict != "MISS" && verdict != "SUNK") {
-				std::cout << "Invalid response, enter again: ";
+		if (automatic) {
+			assert(god[shotX][shotY] != -2);
+			if (god[shotX][shotY] == -1) {
+				verdict = "MISS";
 			} else {
-				break;
+				int tem = god[shotX][shotY];
+				god[shotX][shotY] = -2;
+				bool anyLeft = false;
+				for (int i = 0; i < N; i++) {
+					for (int j = 0; j < N; j++) {
+						if (god[i][j] == tem) {
+							anyLeft = true;
+							break;
+						}
+					}
+					if (anyLeft)
+						break;
+				}
+				if (anyLeft)
+					verdict = "HIT";
+				else
+					verdict = "SUNK";
+			}
+			std::cout << verdict << '\n';
+		} else {
+			while (true) {
+				std::cin >> verdict;
+				if (verdict == "STOP" || verdict == "BREAK" || verdict == "RETURN") {
+					return 0;
+				} else if (verdict != "HIT" && verdict != "MISS" && verdict != "SUNK") {
+					std::cout << "Invalid response, enter again: ";
+				} else {
+					break;
+				}
 			}
 		}
 
 		if (verdict == "HIT") {
 			board[shotX][shotY] = 'H';
+			numHits++;
 		} else if (verdict == "MISS") {
 			board[shotX][shotY] = 'M';
-			numHits++;
 		} else if (verdict == "SUNK") {
 			board[shotX][shotY] = 'S';
 			numHits++;
 		}
 	}
 
-	std::cout << "Total Moves: " << moves << '\n';
+	std::cout << BOLD << CYAN << "\n\nTotal Moves: " << moves << RESET << "\n\n";
 	std::cout << "  0123456789\n +----------\n";
 	for (int x = 0; x < N; x++) {
 		std::cout << x << '|';
 		for (int y = 0; y < N; y++) {
 			std::string col = "";
-			if (board[x][y] == 'H')
+			if (board[x][y] == 'H' || board[x][y] == 'S')
 				col = GREEN;
 			else if (board[x][y] == 'M')
 				col = RED;
-			if (board[x][y] == 'M')
+			if (board[x][y] == 'U')
 				std::cout << ' ';
 			else
 				std::cout << col << '*' << RESET;
 		}
 		std::cout << '\n';
 	}
+
+
+	std::cerr << BOLD << "Automatic Mode Enabled\nRandomly Generated Board Configuration:\n" << RESET;
+	std::cout << "  0123456789\n +----------\n";
+	for (int x = 0; x < N; x++) {
+		std::cerr << x << "|";
+		for (int y = 0; y < N; y++) {
+			if (god[x][y] == -1)
+				std::cerr << ' ';
+			else
+				std::cerr << GREEN << '*' << RESET;
+		}
+		std::cerr << '\n';
+	}
+	std::cerr << '\n';
+
 }
