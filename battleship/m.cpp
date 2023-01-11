@@ -718,13 +718,16 @@ int main() {
 								if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 2)
 									numSquares++;
 						if (numSquares == 3) {
+							std::cerr << PURPLE << "    Ship of length 3 has been sunk!!\n" << RESET;
 							for (short x = 0; x < N; x++)
 								for (short y = 0; y < N; y++)
-									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
+									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 2)
 										board[x][y] = KILL_CHAR;
 							shipSizes.erase(shipSizes.begin() + i);
 							numShips--, i--;
 						} else if (numSquares == 6) {
+							std::cerr << PURPLE << "    Ship of length 3 has been sunk!!\n" << RESET;
+							std::cerr << PURPLE << "    Ship of length 3 has been sunk!!\n" << RESET;
 							for (short x = 0; x < N; x++)
 								for (short y = 0; y < N; y++)
 									if ((board[x][y] == HIT_CHAR || board[x][y] == SUNK_CHAR) && (maskBoard[x][y] >> i & 1) && (maskBoard[x][y] >> otherThreeInd & 1) && __builtin_popcount(maskBoard[x][y]) == 1)
